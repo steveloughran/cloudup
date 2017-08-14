@@ -20,10 +20,9 @@ package org.apache.hadoop.tools.cloudup;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.Callable;
 
 import org.junit.After;
 import org.junit.Assert;
@@ -37,7 +36,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
@@ -47,7 +45,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.fs.contract.ContractTestUtils;
 
-import static org.apache.hadoop.test.LambdaTestUtils.*;
+import static org.apache.hadoop.tools.cloudup.CloudupTestUtils.*;
 
 public class TestLocalCloudup extends Assert {
 
@@ -70,24 +68,7 @@ public class TestLocalCloudup extends Assert {
   @BeforeClass
   public static void classSetup() throws Exception {
     Thread.currentThread().setName("JUnit");
-
-    String testDir = System.getProperty("test.build.data");
-    if (testDir == null) {
-      File tf = File.createTempFile("TestLocalCloudup", ".dir");
-      tf.delete();
-      testDir = tf.getAbsolutePath();
-      testDirectory = new File(testDir);
-    } else {
-      testDirectory = new File(testDir);
-      // test dir from sysprop; force delete
-      FileUtil.fullyDelete(testDirectory);
-    }
-    mkdirs(testDirectory);
-  }
-
-
-  protected static void mkdirs(File dir) {
-    assertTrue("Failed to create " + dir, dir.mkdirs());
+    testDirectory = createTestDir();
   }
 
   @Before
@@ -96,6 +77,8 @@ public class TestLocalCloudup extends Assert {
     mkdirs(methodDir);
     sourceDir = new File(methodDir, "src");
     destDir = new File(methodDir, "dest");
+    FileUtil.fullyDelete(sourceDir);
+    FileUtil.fullyDelete(destDir);
   }
 
   @After
@@ -103,7 +86,6 @@ public class TestLocalCloudup extends Assert {
     if (methodDir != null) {
       FileUtil.fullyDelete(methodDir);
     }
-
   }
 
 
@@ -130,26 +112,44 @@ public class TestLocalCloudup extends Assert {
   }
 
   @Test
-  public void testCopyRecursive() throws Throwable {
-    File subdir = new File(sourceDir, "subdir");
-    int expected = 0;
-    mkdirs(subdir);
-    File top = new File(sourceDir, "top");
-    FileUtils.write(top, "toplevel");
-    expected++;
-    int size = 32;
-    for (int i = 0; i < size; i++) {
-      String text = String.format("file-%02d", i);
-      File f = new File(subdir, text);
-      FileUtils.write(f, f.toString());
-    }
-    expected += size;
+  public void testNoOverwriteDest() throws Throwable {
+    FileUtils.write(sourceDir, "hello");
+    LOG.info("Initial upload");
+    expectSuccess(
+        "-s", sourceDir.toURI().toString(),
+        "-d", destDir.toURI().toString());
+    assertTrue(destDir.isFile());
+    LOG.info("Second upload");
+    expectException(FileAlreadyExistsException.class,
+        "-s", sourceDir.toURI().toString(),
+        "-d", destDir.toURI().toString());
 
-    // and write the largest file
-    File largest = new File(subdir, "largest");
-    FileUtils.writeByteArrayToFile(largest,
-        ContractTestUtils.dataset(8192, 32, 64));
-    expected++;
+    // and now with -i, the failure is ignored
+    expectSuccess(
+        "-s", sourceDir.toURI().toString(),
+        "-i",
+        "-d", destDir.toURI().toString());
+  }
+
+  @Test
+  public void testOverwriteDest() throws Throwable {
+    FileUtils.write(sourceDir, "hello");
+    LOG.info("Initial upload");
+    expectSuccess(
+        "-s", sourceDir.toURI().toString(),
+        "-d", destDir.toURI().toString());
+    assertTrue(destDir.isFile());
+    LOG.info("Second upload");
+    expectSuccess(
+        "-s", sourceDir.toURI().toString(),
+        "-o",
+        "-d", destDir.toURI().toString());
+  }
+
+
+  @Test
+  public void testCopyRecursive() throws Throwable {
+    int expected = createTestFiles(sourceDir, 64);
 
     expectSuccess(
         "-s", sourceDir.toURI().toString(),
@@ -170,37 +170,6 @@ public class TestLocalCloudup extends Assert {
     }
     assertEquals("Mismatch in files found", expected, count);
 
-
-
-
-
-  }
-
-  private int exec(String... args) throws Exception {
-    return Cloudup.exec(args);
-  }
-
-  private void expectSuccess(String... args) throws Exception {
-    expectOutcome(0, args);
-  }
-
-  private <E extends Throwable> E expectException(Class<E> clazz,
-      final String... args) throws Exception {
-    return intercept(clazz,
-        new Callable<Integer>() {
-          @Override
-          public Integer call() throws Exception {
-            return exec(args);
-          }
-        });
-  }
-
-  private void expectOutcome(int expected, String... args) throws Exception {
-    assertEquals(toString(args), expected, exec(args));
-  }
-
-  private String toString(String[] args) {
-    return "exec(" + StringUtils.join(args, " ") + ")";
   }
 
 }

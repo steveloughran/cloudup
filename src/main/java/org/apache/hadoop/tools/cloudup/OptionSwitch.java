@@ -23,7 +23,7 @@ import com.google.common.base.Preconditions;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 
 /**
  * Enumeration mapping configuration keys to command line options.
@@ -124,15 +124,13 @@ public enum OptionSwitch {
     return optionValue == null ? defVal : optionValue.trim();
   }
 
-  public boolean eval(CommandLine command, boolean defVal) {
-    return Boolean.valueOf(eval(command, Boolean.toString(defVal)));
+  public boolean hasOption(CommandLine command) {
+    return command.hasOption(getOptionName());
   }
 
   public int eval(CommandLine command, int defVal) {
     return Integer.valueOf(eval(command, Integer.toString(defVal)));
   }
-
-
 
   /**
    * Enum all the options and add them.

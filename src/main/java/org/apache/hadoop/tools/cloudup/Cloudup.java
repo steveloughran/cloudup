@@ -28,7 +28,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.NavigableMap;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
@@ -105,8 +104,8 @@ public class Cloudup extends Configured implements Tool {
     final int largest = OptionSwitch.LARGEST.eval(command, DEFAULT_LARGEST);
     final int threads = OptionSwitch.THREADS.eval(command, DEFAULT_THREADS);
 
-    overwrite = OptionSwitch.OVERWRITE.eval(command, false);
-    ignoreFailures = OptionSwitch.IGNORE_FAILURES.eval(command, false);
+    overwrite = OptionSwitch.OVERWRITE.hasOption(command);
+    ignoreFailures = OptionSwitch.IGNORE_FAILURES.hasOption(command);
     sourceFS = FileSystem.getLocal(getConf());
     sourcePath = sourceFS.makeQualified(new Path(
         OptionSwitch.SOURCE.required(command)));
@@ -166,7 +165,7 @@ public class Cloudup extends Configured implements Tool {
     final NanoTimer uploadTimer = new NanoTimer();
 
     // now completion service for all outstanding workers
-    completion = new ExecutorCompletionService<Long>(workers);
+    completion = new ExecutorCompletionService<>(workers);
 
 
     // upload initial sorted entries.
@@ -182,11 +181,11 @@ public class Cloudup extends Configured implements Tool {
     for (int i = 0; i < sortUploadCount; i++) {
       UploadEntry upload = uploadList.get(i);
       LOG.info("Large file {}: size = {}: {}",
-          i+1, upload.getSize(),
+          i + 1, upload.getSize(),
           upload.getSource());
       long submitSize = submit(upload);
       if (submitSize >= 0) {
-        submittedFiles ++;
+        submittedFiles++;
         sortUploadSize += submitSize;
       }
     }
@@ -235,8 +234,6 @@ public class Cloudup extends Configured implements Tool {
     LOG.info("Uploads completed, duration:  {}",
         uploadDuration);
 
-    LOG.info("Bandwidth {} MB/s",
-        uploadTimer.bandwidthDescription(uploadSize));
 
     LOG.info("\nSource statistics: {}", sourceFS.getUri());
     dumpStats(sourceFS);
@@ -244,6 +241,12 @@ public class Cloudup extends Configured implements Tool {
       LOG.info("\nDest statistics: {}", destFS.getUri());
       dumpStats(destFS);
     }
+
+
+    LOG.info("Bandwidth {} MB/s",
+        uploadTimer.bandwidthDescription(uploadSize));
+    LOG.info(String.format("Seconds per file %.3sf",
+        ((double) uploadDuration.value()) / uploadCount));
 
     // run through the outcomes and process errors
     // at this point, all the uploads have been executed.
@@ -255,18 +258,20 @@ public class Cloudup extends Configured implements Tool {
       try {
         finalUploadedSize += naturalize(await(outcome));
       } catch (IOException e) {
-          errors++;
-          if (exception == null) {
-            exception = e;
-          }
+        errors++;
+        if (exception == null) {
+          exception = e;
+        }
       } catch (InterruptedException ignored) {
         // ignored
       }
     }
 
-    LOG.info("Number of errors: {}", errors);
-    if (exception != null && !ignoreFailures) {
-      throw exception;
+    if (exception != null) {
+      LOG.info("Number of errors: {}", errors);
+      if (!ignoreFailures) {
+        throw exception;
+      }
     }
 
     return 0;
@@ -283,11 +288,11 @@ public class Cloudup extends Configured implements Tool {
 
   /**
    * Await a future completing; uprate failures.
-   * @param future
-   * @param <T>
+   * @param future future to exec
+   * @param <T> return type
    * @return the result
-   * @throws IOException
-   * @throws InterruptedException
+   * @throws IOException failure
+   * @throws InterruptedException work interrupted
    */
   private static <T> T await(Future<T> future)
       throws IOException, InterruptedException {
@@ -317,7 +322,7 @@ public class Cloudup extends Configured implements Tool {
 
   /**
    * Create an upload.
-   * @param upload
+   * @param upload upload entry
    * @return length of upload; -1 for "none"
    */
   private Callable<Long> createUploadOperation(final UploadEntry upload) {
@@ -336,7 +341,7 @@ public class Cloudup extends Configured implements Tool {
    * @return size to upload; -1 for no upload
    */
   private long submit(final UploadEntry upload) {
-    LOG.debug("Submit {}", upload );
+    LOG.debug("Submit {}", upload);
     if (upload.inState(UploadEntry.State.ready)) {
       Callable<Long> operation = createUploadOperation(upload);
       upload.setState(UploadEntry.State.queued);
@@ -375,7 +380,7 @@ public class Cloudup extends Configured implements Tool {
   }
 
   /**
-   * List source files
+   * List source files.
    * @return list of files to upload.
    * @throws IOException failure to list
    */
@@ -392,10 +397,10 @@ public class Cloudup extends Configured implements Tool {
   }
 
   /**
-   * Upload one entry
+   * Upload one entry.
    * @param upload upload information
    * @return number of bytes upload, or -1 for no upload attempted.
-   * @throws IOException
+   * @throws IOException failure
    */
   private long uploadOneFile(final UploadEntry upload) throws IOException {
 
@@ -422,10 +427,13 @@ public class Cloudup extends Configured implements Tool {
           source, dest, upload.getSize());
       try {
         final FileStatus status = destFS.getFileStatus(dest);
-        if (status.isDirectory() || !overwrite) {
+        if (status.isDirectory()) {
           throw new FileAlreadyExistsException(
-              String.format("%s found at %s",
-                  status.isDirectory() ? "directory" : "file",
+              String.format("Directory found at %s", dest));
+        }
+        if (!overwrite) {
+          throw new FileAlreadyExistsException(
+              String.format("File found at %s and overwrite=false",
                   dest));
         }
       } catch (FileNotFoundException ignored) {
@@ -465,41 +473,12 @@ public class Cloudup extends Configured implements Tool {
     }
   }
 
-
-  /**
-   * List the upload size
-   * @param uploads list of uploads
-   * @return total size of upload.
-   */
-  private long calculateUploadSize(List<UploadEntry> uploads) {
-    long result = 0;
-    for (UploadEntry upload : uploads) {
-      result += upload.getSize();
-    }
-    return result;
-  }
-
-  /**
-   * List the upload size
-   * @param uploads list of uploads
-   * @return total size of upload.
-   */
-  private long calculateActualSize(List<Long> uploads) {
-    long result = 0;
-    for (Long upload : uploads) {
-      if (upload > 0) {
-        result += upload;
-      }
-    }
-    return result;
-  }
-
   /**
    * Find the final name of a given output file, given the job output directory
    * and the work directory.
    * @param srcFile the specific task output file
    * @return the final path for the specific output file
-   * @throws IOException
+   * @throws IOException failure
    */
   private Path getFinalPath(Path srcFile) throws IOException {
     URI taskOutputUri = srcFile.toUri();
@@ -515,6 +494,10 @@ public class Cloudup extends Configured implements Tool {
     }
   }
 
+  /**
+   * Extracts the stats of a filesystem and dump it.
+   * @param fs filesystem.
+   */
   private void dumpStats(FileSystem fs) {
     StorageStatistics statistics = fs.getStorageStatistics();
     Iterator<StorageStatistics.LongStatistic> iterator
@@ -526,15 +509,14 @@ public class Cloudup extends Configured implements Tool {
       results.put(stat.getName(), stat.getValue());
     }
     // log the results
-    NavigableMap<String, Long> m = results.descendingMap();
-    for (Map.Entry<String, Long> entry : m.entrySet()) {
+    for (Map.Entry<String, Long> entry : results.entrySet()) {
       LOG.info("{}={}", entry.getKey(), entry.getValue());
     }
 
   }
 
   /**
-   * execute the command, return the result or throw an exception,
+   * Execute the command, return the result or throw an exception,
    * as appropriate.
    * @param args argument varags.
    * @return return code
@@ -548,7 +530,7 @@ public class Cloudup extends Configured implements Tool {
    * Entry point, calls System.exit afterwards.
    * @param args argument list.
    */
-  public static void main(String[] args){
+  public static void main(String[] args) {
     try {
       System.exit(exec(args));
     } catch (Throwable e) {
