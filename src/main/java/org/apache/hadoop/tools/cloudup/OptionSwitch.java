@@ -25,9 +25,6 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.lang3.StringUtils;
 
-
-import static org.apache.hadoop.tools.cloudup.CloudupConstants.*;
-
 /**
  * Enumeration mapping configuration keys to command line options.
  * Lifted from {@code distcp}.

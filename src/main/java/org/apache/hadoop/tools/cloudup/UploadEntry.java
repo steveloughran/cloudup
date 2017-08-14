@@ -38,7 +38,7 @@ final class UploadEntry implements Serializable, Comparable<UploadEntry> {
     failed
   }
 
-  private State state;
+  private State state= State.ready;
 
   /** Source. Must be absolute. */
   private final Path source;
@@ -174,6 +174,18 @@ final class UploadEntry implements Serializable, Comparable<UploadEntry> {
   @Override
   public int compareTo(@Nonnull UploadEntry o) {
     return Long.compare(size, o.getSize());
+  }
+
+  @Override
+  public String toString() {
+    final StringBuilder sb = new StringBuilder(
+        "UploadEntry{");
+    sb.append("state=").append(state);
+    sb.append(", source=").append(source);
+    sb.append(", dest=").append(dest);
+    sb.append(", size=").append(size);
+    sb.append('}');
+    return sb.toString();
   }
 
   static class SizeComparator implements Comparator<UploadEntry> {
