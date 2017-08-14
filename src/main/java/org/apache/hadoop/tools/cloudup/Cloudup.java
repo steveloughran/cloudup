@@ -142,7 +142,7 @@ public class Cloudup extends Configured implements Tool {
     // worker pool
     workers = HadoopExecutors.newFixedThreadPool(threads);
 
-    final Duration prepartionDuration = new Duration();
+    final Duration preparationDuration = new Duration();
     // list the files
     Future<List<UploadEntry>> listFilesOperation =
         workers.submit(buildUploads());
@@ -156,9 +156,9 @@ public class Cloudup extends Configured implements Tool {
     List<UploadEntry> uploadList = await(listFilesOperation);
     final int uploadCount = uploadList.size();
 
-    prepartionDuration.finished();
+    preparationDuration.finished();
     LOG.info("Files to upload = {}; preparation duration = {}",
-        uploadCount, prepartionDuration);
+        uploadCount, preparationDuration);
 
 
     // full upload operation
@@ -230,7 +230,7 @@ public class Cloudup extends Configured implements Tool {
       outcomes.add(outcome);
     }
 
-    prepartionDuration.finished();
+    uploadDuration.finished();
     uploadTimer.end();
     LOG.info("Uploads completed, duration:  {}",
         uploadDuration);
@@ -432,16 +432,19 @@ public class Cloudup extends Configured implements Tool {
         // no file at the destination.
       }
       destFS.copyFromLocalFile(false, overwrite, source, dest);
-      LOG.info("Successful upload of {}", source);
       upload.setState(UploadEntry.State.succeeded);
+      upload.setEndTime(now());
+      LOG.info("Successful upload of {} in {} s",
+          source,
+          Duration.humanTime(upload.getDuration()));
     } catch (IOException e) {
       upload.setState(UploadEntry.State.failed);
       upload.setException(e);
+      upload.setEndTime(now());
       LOG.warn("Failed to  upload {} : {}", source, e.toString());
       LOG.debug("Upload to {} failed", dest, e);
       noteException(e);
     }
-    upload.setEndTime(now());
     return upload.inState(UploadEntry.State.succeeded) ?
         upload.getSize()
         : 0;

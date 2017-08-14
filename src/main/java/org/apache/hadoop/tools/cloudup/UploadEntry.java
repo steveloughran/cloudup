@@ -30,6 +30,10 @@ import org.apache.hadoop.fs.Path;
 
 final class UploadEntry implements Serializable, Comparable<UploadEntry> {
 
+  public long getDuration() {
+    return endTime -startTime;
+  }
+
   public enum State {
     ready,
     queued,
