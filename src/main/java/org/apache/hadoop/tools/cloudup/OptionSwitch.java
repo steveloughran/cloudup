@@ -39,7 +39,7 @@ public enum OptionSwitch {
    * Logs failures in a file
    */
   IGNORE_FAILURES(
-      new Option("i", false, "Ignore failures during copy")),
+      new Option("i", "ignore", false, "Ignore failures during copy")),
 
   /**
    * Specify worker threads.
@@ -49,7 +49,7 @@ public enum OptionSwitch {
   /**
    * Specify worker threads.
    */
-  SORT_COUNT(new Option("t", "threads", true, "Threads to perform upload")),
+  LARGEST(new Option("l", "largest", true, "Largest files to upload first")),
 
   /**
    * Overwrite target-files unconditionally.

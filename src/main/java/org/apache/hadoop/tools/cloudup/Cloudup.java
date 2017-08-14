@@ -34,6 +34,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.google.common.base.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,8 +51,10 @@ import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
 import org.apache.hadoop.util.concurrent.HadoopExecutors;
 import org.apache.hadoop.util.concurrent.HadoopThreadPoolExecutor;
+import org.apache.log4j.pattern.ThrowableInformationPatternConverter;
 
 /**
  * Entry point for Cloudup: parallelized upload of local files
@@ -71,6 +74,8 @@ public class Cloudup extends Configured implements Tool {
   AtomicBoolean exit = new AtomicBoolean(false);
   boolean overwrite = true;
   boolean ignoreFailures = true;
+  // single element exception with sync access.
+  final Exception[] firstException = new Exception[0];
 
 
   public Cloudup() {
@@ -102,8 +107,6 @@ public class Cloudup extends Configured implements Tool {
 
     overwrite = OptionSwitch.OVERWRITE.eval(command, false);
     ignoreFailures = OptionSwitch.IGNORE_FAILURES.eval(command, false);
-
-
     sourceFS = FileSystem.getLocal(getConf());
     sourcePath = sourceFS.makeQualified(new Path(
         OptionSwitch.SOURCE.required(command)));
@@ -117,6 +120,21 @@ public class Cloudup extends Configured implements Tool {
         threads, sortCount,
         overwrite, ignoreFailures);
 
+
+    if (destFS.equals(sourceFS)) {
+      // dest FS is also local filesystem.
+      // make sure that the source isn't under the dest,
+      // and vice versa
+
+      String s = sourcePath.toString();
+      String d = destPath.toString();
+      Preconditions.checkArgument(!s.startsWith(d),
+          "Source path %s is under destination path %s",
+          s, d);
+      Preconditions.checkArgument(!s.startsWith(d),
+          "Destination path %s is under source path %s",
+          d, s);
+    }
 
     // worker pool
     workers = HadoopExecutors.newFixedThreadPool(threads);
@@ -206,22 +224,24 @@ public class Cloudup extends Configured implements Tool {
     // at this point, all the uploads have been executed.
     long finalUploadedSize = 0;
     int errors = 0;
+    Exception exception = firstException[0];
+
     for (Future<Long> outcome : outcomes) {
       try {
         finalUploadedSize += naturalize(await(outcome));
       } catch (IOException e) {
-        if (ignoreFailures) {
           errors++;
-        } else {
-          throw e;
-        }
+          if (exception == null) {
+            exception = e;
+          }
       } catch (InterruptedException ignored) {
         // ignored
       }
     }
 
-    if (ignoreFailures) {
-      LOG.info("Number of errors: {}", errors);
+    LOG.info("Number of errors: {}", errors);
+    if (exception != null && !ignoreFailures) {
+      throw exception;
     }
 
     return 0;
@@ -379,12 +399,29 @@ public class Cloudup extends Configured implements Tool {
       upload.setException(e);
       LOG.warn("Failed to  upload {} : {}", source, e.toString());
       LOG.debug("Upload to {} failed", dest, e);
+      noteException(e);
     }
     upload.setEndTime(now());
     return upload.inState(UploadEntry.State.succeeded) ?
         upload.getSize()
         : 0;
   }
+
+  /**
+   * Note the exception.
+   * If this is the first exception, it's recorded, and,
+   * if ignoreFailures == false, triggers the end of the upload
+   * @param ex exception.
+   */
+  private synchronized void noteException(IOException ex) {
+    if (firstException[0] == null) {
+      firstException[0] = ex;
+      if (!ignoreFailures) {
+        exit.set(true);
+      }
+    }
+  }
+
 
   /**
    * List the upload size
@@ -435,5 +472,28 @@ public class Cloudup extends Configured implements Tool {
     }
   }
 
+  /**
+   * execute the command, return the result or throw an exception,
+   * as appropriate.
+   * @param args argument varags.
+   * @return return code
+   * @throws Exception failure
+   */
+  public static int exec(String... args) throws Exception {
+    return ToolRunner.run(new Cloudup(), args);
+  }
+
+  /**
+   * Entry point, calls System.exit afterwards.
+   * @param args argument list.
+   */
+  public static void main(String[] args){
+    try {
+      System.exit(exec(args));
+    } catch (Throwable e) {
+      LOG.error("During execution: " + e, e);
+      System.exit(-1);
+    }
+  }
 
 }
