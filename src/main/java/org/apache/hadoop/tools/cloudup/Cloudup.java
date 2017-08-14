@@ -35,6 +35,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.google.common.base.Preconditions;
@@ -56,7 +59,6 @@ import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.fs.StorageStatistics;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
-import org.apache.hadoop.util.concurrent.HadoopExecutors;
 
 /**
  * Entry point for Cloudup: parallelized upload of local files
@@ -139,7 +141,9 @@ public class Cloudup extends Configured implements Tool {
     }
 
     // worker pool
-    workers = HadoopExecutors.newFixedThreadPool(threads);
+    workers = new ThreadPoolExecutor(threads, threads,
+        0L, TimeUnit.MILLISECONDS,
+        new LinkedBlockingQueue<Runnable>());
 
     final Duration preparationDuration = new Duration();
     // list the files
@@ -231,8 +235,6 @@ public class Cloudup extends Configured implements Tool {
 
     uploadDuration.finished();
     uploadTimer.end();
-    LOG.info("Uploads completed, duration:  {}",
-        uploadDuration);
 
 
     LOG.info("\nSource statistics: {}", sourceFS.getUri());
@@ -242,10 +244,11 @@ public class Cloudup extends Configured implements Tool {
       dumpStats(destFS);
     }
 
-
+    LOG.info("\n\nUploads attempted: {}, size {}, duration:  {}",
+        uploadCount, uploadSize, uploadDuration);
     LOG.info("Bandwidth {} MB/s",
         uploadTimer.bandwidthDescription(uploadSize));
-    LOG.info(String.format("Seconds per file %.3sf",
+    LOG.info(String.format("Seconds per file %.3fs",
         ((double) uploadDuration.value()) / uploadCount));
 
     // run through the outcomes and process errors
@@ -268,7 +271,8 @@ public class Cloudup extends Configured implements Tool {
     }
 
     if (exception != null) {
-      LOG.info("Number of errors: {}", errors);
+      LOG.info("Number of errors: {} actual bytes uploaded = {}",
+          errors, finalUploadedSize);
       if (!ignoreFailures) {
         throw exception;
       }
