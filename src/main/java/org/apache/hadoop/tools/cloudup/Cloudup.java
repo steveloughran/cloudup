@@ -51,7 +51,6 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.collections.comparators.ReverseComparator;
 import org.apache.hadoop.conf.Configured;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
@@ -170,7 +169,6 @@ public class Cloudup extends Configured implements Tool {
 
     // now completion service for all outstanding workers
     completion = new ExecutorCompletionService<>(workers);
-
 
     // upload initial sorted entries.
 
@@ -369,7 +367,7 @@ public class Cloudup extends Configured implements Tool {
         } catch (FileNotFoundException e) {
           // dest doesn't exist
         }
-        return destFS.toString();
+        return destPath.toString();
       }
     };
   }
@@ -378,6 +376,7 @@ public class Cloudup extends Configured implements Tool {
     return new Callable<List<UploadEntry>>() {
       @Override
       public List<UploadEntry> call() throws Exception {
+        LOG.info("Listing source files under {}", sourcePath);
         return listFiles();
       }
     };
@@ -429,6 +428,7 @@ public class Cloudup extends Configured implements Tool {
     try {
       LOG.info("Uploading {} to {} (size: {}",
           source, dest, upload.getSize());
+/*
       try {
         final FileStatus status = destFS.getFileStatus(dest);
         if (status.isDirectory()) {
@@ -443,6 +443,7 @@ public class Cloudup extends Configured implements Tool {
       } catch (FileNotFoundException ignored) {
         // no file at the destination.
       }
+*/
       destFS.copyFromLocalFile(false, overwrite, source, dest);
       upload.setState(UploadEntry.State.succeeded);
       upload.setEndTime(now());
