@@ -21,7 +21,6 @@ package org.apache.hadoop.tools.cloudup;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.FileAlreadyExistsException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -119,6 +118,15 @@ public class Cloudup extends Configured implements Tool {
         sourcePath, destPath,
         threads, largest,
         overwrite, ignoreFailures);
+
+    // log S3A=specific details if this is an S3A connection.
+    // not using any constants in the S3A JAR so it links without
+    // needing that jar on the CP
+    if ("s3a".equals(destFS.getUri().getScheme())) {
+      String endpoint = destFS.getConf()
+          .getTrimmed("fs.s3a.endpoint", "(default)");
+      LOG.info("S3A endpoint = {}", endpoint);
+    }
 
 
     // force a check

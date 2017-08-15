@@ -26,13 +26,13 @@ hotsposts.
 * Printing summary statistics, including any provided by
 the filesystem client.
 
-TODO
+### TODO
 
 * Retries on failed uploads
 * Save text & avro summaries of uploads (src, dest, size, start time, end time, etag )
 * Drive off text file rather than list files. 
-* Parallel tree walk.
-* Patterns to upload.
+* Parallel tree walk to accelerate initial listing.
+* Patterns to select upload files.
 
 
 ## Usage
@@ -75,5 +75,51 @@ upload at random.
 
 ### Ignore errors `-i`
 
-Ignore upload errors until the end of the operation.
+Ignore upload errors.
+
+There's a pre-launch check that the destination path is reachable; this
+error is always thrown, as it is generally a sign that there are configuration,
+connectivity, or authentication problems.  
+
+### Overwrite `-o`
+
+Overwrite existing files. If unset, any attempt to overwrite an existing
+file will trigger an error.
+
+## Storage-Specific features
+
+Cloudup is designed to work with any destination filesystem supported
+via the Hadoop APIs, though it is written with Amazon S3 and Microsoft Azure
+WASB storage in mind. It uses the API call `FileSystem.copyFromLocalFile()`,
+which defaults to reading the source file into a buffer, then uploading
+these buffers through a stream created with `FileSystem.create()`.
+If the FileSystem implementation subclass implements a custom
+`copyFromLocalFile()` operation, it can deliver higher performance.
+
+### S3A
+
+The S3A FileSystem client uses the AWS SDK's transfer
+manager to directly upload the source files. As a result
+
+1. The transfer manager's threading and HTTP connection re-use mechanisms
+are those provided by the AWS SDK; this includes an unbounded thread pool
+for parallel upload of different parts in a multipart upload.
+
+1. The thread limit set in `fs.s3a.threads.max` is only used to set the
+limit on other parallelised operations performed by the S3A connector,
+*not the upload of source data itself*
+
+## Examples
+
+Copy the parent directory & children to `s3a://hwdev-steve-ireland-3w/copy`,
+overwriting destination files. 256 S3A threads (ignoring the S3A transfer
+manager). Use 128 workers for simultaneous upload of up to 256 files, and
+sort the source input to identify the 64 largest files for upload ahead
+of any shuffle phase
+
+```bash
+hadoop  jar cloudup-2.8.jar org.apache.hadoop.tools.cloudup.Cloudup  -D fs.s3a.threads.max=256 -s ..  \
+  -d s3a://hwdev-steve-ireland-3w/copy -t 128 -l 64 -o
+
+```
 

@@ -20,7 +20,7 @@ package org.apache.hadoop.tools.cloudup;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.nio.file.FileAlreadyExistsException;
+import java.io.IOException;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -43,7 +43,6 @@ import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RemoteIterator;
-import org.apache.hadoop.fs.contract.ContractTestUtils;
 
 import static org.apache.hadoop.tools.cloudup.CloudupTestUtils.*;
 
@@ -120,7 +119,7 @@ public class TestLocalCloudup extends Assert {
         "-d", destDir.toURI().toString());
     assertTrue(destDir.isFile());
     LOG.info("Second upload");
-    expectException(FileAlreadyExistsException.class,
+    expectException(IOException.class,
         "-s", sourceDir.toURI().toString(),
         "-d", destDir.toURI().toString());
 
