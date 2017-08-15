@@ -26,6 +26,11 @@ hotsposts.
 * Printing summary statistics, including any provided by
 the filesystem client.
 
+This is intended to become [HADOOP-14766](https://issues.apache.org/jira/browse/HADOOP-14766),
+it's just been implemented standalone & built against Hadoop 2.8 for immediate
+use. (FWIW, it should build against Hadoop 2.7, though you don't get the S3A
+speedups there).
+
 ### TODO
 
 * Retries on failed uploads
