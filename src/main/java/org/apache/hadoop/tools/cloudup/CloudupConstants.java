@@ -25,4 +25,6 @@ public class CloudupConstants {
   public static final int E_INVALID_ARGUMENT = -1;
   public static final int E_NOT_FOUND = 44;
   public static final int E_NO_ACCESS = 41;
+
+  public static final String USAGE = "Usage: Cloudup: -s source -d dest [-o] [-i] [-l <largest>] [-t threads] ";
 }

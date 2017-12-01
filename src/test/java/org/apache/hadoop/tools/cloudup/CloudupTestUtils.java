@@ -23,18 +23,21 @@ import java.io.IOException;
 import java.util.concurrent.Callable;
 
 import org.junit.Assert;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.contract.ContractTestUtils;
 
-import static org.apache.hadoop.test.LambdaTestUtils.intercept;
-
 /**
  * Various utils
  */
 public final class CloudupTestUtils extends Assert {
+
+  private static final Logger LOG = LoggerFactory.getLogger(CloudupTestUtils.class);
+
   private CloudupTestUtils() {
   }
 
@@ -55,6 +58,36 @@ public final class CloudupTestUtils extends Assert {
             return exec(args);
           }
         });
+  }
+
+  private static String robustToString(Object o) {
+    if (o == null) {
+      return "(null)";
+    } else {
+      try {
+        return o.toString();
+      } catch (Exception e) {
+        LOG.info("Exception calling toString()", e);
+        return o.getClass().toString();
+      }
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T, E extends Throwable> E intercept(
+      Class<E> clazz,
+      Callable<T> eval)
+      throws Exception {
+    try {
+      T result = eval.call();
+      throw new AssertionError("Expected an exception, got "
+          + robustToString(result));
+    } catch (Throwable e) {
+      if (clazz.isAssignableFrom(e.getClass())) {
+        return (E) e;
+      }
+      throw e;
+    }
   }
 
   public static void expectOutcome(int expected, String... args) throws Exception {

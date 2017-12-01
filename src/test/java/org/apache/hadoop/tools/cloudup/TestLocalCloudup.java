@@ -107,7 +107,7 @@ public class TestLocalCloudup extends Assert {
     expectSuccess(
         "-s", sourceDir.toURI().toString(),
         "-d", destDir.toURI().toString());
-    assertTrue(destDir.isFile());
+    assertDestDirIsFile();
   }
 
   @Test
@@ -117,7 +117,7 @@ public class TestLocalCloudup extends Assert {
     expectSuccess(
         "-s", sourceDir.toURI().toString(),
         "-d", destDir.toURI().toString());
-    assertTrue(destDir.isFile());
+    assertDestDirIsFile();
     LOG.info("Second upload");
     expectException(IOException.class,
         "-s", sourceDir.toURI().toString(),
@@ -137,12 +137,16 @@ public class TestLocalCloudup extends Assert {
     expectSuccess(
         "-s", sourceDir.toURI().toString(),
         "-d", destDir.toURI().toString());
-    assertTrue(destDir.isFile());
+    assertDestDirIsFile();
     LOG.info("Second upload");
     expectSuccess(
         "-s", sourceDir.toURI().toString(),
         "-o",
         "-d", destDir.toURI().toString());
+  }
+
+  private void assertDestDirIsFile() {
+    assertTrue("Not a file: " + destDir, destDir.isFile());
   }
 
 

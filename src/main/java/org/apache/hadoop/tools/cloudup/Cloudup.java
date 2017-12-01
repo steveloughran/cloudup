@@ -24,10 +24,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
@@ -50,11 +47,11 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.collections.comparators.ReverseComparator;
 import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RemoteIterator;
-import org.apache.hadoop.fs.StorageStatistics;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
@@ -80,6 +77,10 @@ public class Cloudup extends Configured implements Tool {
   final Exception[] firstException = new Exception[1];
   private CompletionService<Long> completion;
 
+  private FileStatus sourcePathStatus;
+
+  private FileStatus destPathStatus;
+
 
   public Cloudup() {
   }
@@ -88,9 +89,14 @@ public class Cloudup extends Configured implements Tool {
     return System.currentTimeMillis();
   }
 
+
   @Override
   public int run(String[] args) throws Exception {
     // parse the path
+    if (args.length == 0) {
+      LOG.info(CloudupConstants.USAGE);
+      return -2;
+    }
     final CommandLineParser parser = new GnuParser();
 
     CommandLine command;
@@ -99,7 +105,9 @@ public class Cloudup extends Configured implements Tool {
           OptionSwitch.addAllOptions(new Options()), args, true);
     } catch (ParseException e) {
       throw new IllegalArgumentException("Unable to parse arguments. " +
-          Arrays.toString(args), e);
+          Arrays.toString(args)
+          + "\n" + CloudupConstants.USAGE,
+          e);
     }
     final int largest = OptionSwitch.LARGEST.eval(command, DEFAULT_LARGEST);
     final int threads = OptionSwitch.THREADS.eval(command, DEFAULT_THREADS);
@@ -129,8 +137,13 @@ public class Cloudup extends Configured implements Tool {
     }
 
 
-    // force a check
-    sourceFS.getFileStatus(sourcePath);
+    // see what we have for a source: file & dir are treated differently
+    sourcePathStatus = sourceFS.getFileStatus(sourcePath);
+    try {
+      destPathStatus = destFS.getFileStatus(destPath);
+    } catch (FileNotFoundException e) {
+      destPathStatus = null;
+    }
 
     if (destFS.equals(sourceFS)) {
       // dest FS is also local filesystem.
@@ -243,11 +256,9 @@ public class Cloudup extends Configured implements Tool {
     uploadTimer.end();
 
 
-    LOG.info("\nSource statistics: {}", sourceFS.getUri());
-    dumpStats(sourceFS);
+    dumpStats(sourceFS, "Source statistics");
     if (!sourceFS.equals(destFS)) {
-      LOG.info("\nDest statistics: {}", destFS.getUri());
-      dumpStats(destFS);
+      dumpStats(destFS, "Dest statistics");
     }
 
     LOG.info("\n\nUploads attempted: {}, size {}, duration:  {}",
@@ -385,17 +396,17 @@ public class Cloudup extends Configured implements Tool {
       @Override
       public List<UploadEntry> call() throws Exception {
         LOG.info("Listing source files under {}", sourcePath);
-        return listFiles();
+        return createUploadList();
       }
     };
   }
 
   /**
-   * List source files.
-   * @return list of files to upload.
+   * List the source files and build the list
+   * @return list of uploads
    * @throws IOException failure to list
    */
-  private List<UploadEntry> listFiles() throws IOException {
+  private List<UploadEntry> createUploadList() throws IOException {
     List<UploadEntry> uploads = new ArrayList<>();
     RemoteIterator<LocatedFileStatus> ri = sourceFS.listFiles(sourcePath, true);
     while (ri.hasNext()) {
@@ -455,8 +466,9 @@ public class Cloudup extends Configured implements Tool {
       destFS.copyFromLocalFile(false, overwrite, source, dest);
       upload.setState(UploadEntry.State.succeeded);
       upload.setEndTime(now());
-      LOG.info("Successful upload of {} in {} s",
+      LOG.info("Successful upload of {} tpo {} in {} s",
           source,
+          dest,
           Duration.humanTime(upload.getDuration()));
     } catch (IOException e) {
       upload.setState(UploadEntry.State.failed);
@@ -503,7 +515,13 @@ public class Cloudup extends Configured implements Tool {
     if (!relativePath.getPath().isEmpty()) {
       return new Path(destPath, relativePath.getPath());
     } else {
-      return destPath;
+      // relative path is none.
+      if (destPathStatus != null && destPathStatus.isFile()) {
+        return destPath;
+      } else {
+        // source is a file, dest is a dir
+        return new Path(destPath, srcFile.getName());
+      }
     }
   }
 
@@ -511,10 +529,11 @@ public class Cloudup extends Configured implements Tool {
    * Extracts the stats of a filesystem and dump it.
    * @param fs filesystem.
    */
-  private void dumpStats(FileSystem fs) {
-    StorageStatistics statistics = fs.getStorageStatistics();
-    Iterator<StorageStatistics.LongStatistic> iterator
-        = statistics.getLongStatistics();
+  private void dumpStats(FileSystem fs, String header) {
+ /*  // Not supported on Hadoop 2.7
+    LOG.info("\n" + header +": " + fs.getUri());
+    Iterator<org.apache.hadoop.fs.StorageStatistics.LongStatistic> iterator
+        = fs.getStorageStatistics().getLongStatistics();
     // convert to a (sorted) treemap
     TreeMap<String, Long> results = new TreeMap<>();
     while (iterator.hasNext()) {
@@ -525,6 +544,7 @@ public class Cloudup extends Configured implements Tool {
     for (Map.Entry<String, Long> entry : results.entrySet()) {
       LOG.info("{}={}", entry.getKey(), entry.getValue());
     }
+*/
 
   }
 
