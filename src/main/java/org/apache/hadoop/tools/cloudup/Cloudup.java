@@ -95,7 +95,7 @@ public class Cloudup extends Configured implements Tool {
     // parse the path
     if (args.length == 0) {
       LOG.info(CloudupConstants.USAGE);
-      return -2;
+      return CloudupConstants.E_USAGE;
     }
     final CommandLineParser parser = new GnuParser();
 

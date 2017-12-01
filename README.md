@@ -42,9 +42,16 @@ speedups there).
 
 ## Usage
 
+
+```
+hadoop jar cloudup.jar -s <source> -d <dest> -t <threads> [-l <largest>] [-i]
+```
+
+If it is on the classpath already:
 ```
 hadoop org.apache.hadoop.tools.cloudup.Cloudup -s <source> -d <dest> -t <threads> [-l <largest>] [-i]
 ```
+
 
 
 ### Source `-s <source>` or `--source <source>`
@@ -123,7 +130,7 @@ sort the source input to identify the 64 largest files for upload ahead
 of any shuffle phase
 
 ```bash
-hadoop  jar cloudup-2.8.jar org.apache.hadoop.tools.cloudup.Cloudup  -D fs.s3a.threads.max=256 -s ..  \
+hadoop  jar cloudup-2.8.jar -D fs.s3a.threads.max=256 -s ..  \
   -d s3a://hwdev-steve-ireland-3w/copy -t 128 -l 64 -o
 
 ```
