@@ -43,61 +43,66 @@ import org.apache.hadoop.fs.s3a.S3AFileSystem;
 import org.apache.hadoop.tools.cloudup.CloudupTestUtils;
 
 import static org.apache.hadoop.fs.contract.ContractTestUtils.cleanup;
-import static org.apache.hadoop.tools.cloudup.CloudupTestUtils.*;
+import static org.apache.hadoop.tools.cloudup.CloudupTestUtils.createTestDir;
+import static org.apache.hadoop.tools.cloudup.CloudupTestUtils.createTestFiles;
+import static org.apache.hadoop.tools.cloudup.CloudupTestUtils.expectSuccess;
 
 /**
  * As the S3A test base isn't available, do enough to make it look
  * like it is, to ease later merge.
  */
-public class ITestS3ACloudup extends AbstractS3ACloudupTest {
+public class AbstractS3ACloudupTest extends AbstractFSContractTestBase {
   protected static final Logger LOG =
-      LoggerFactory.getLogger(ITestS3ACloudup.class);
+      LoggerFactory.getLogger(AbstractS3ACloudupTest.class);
   private Path root;
   private Path testPath;
 
+  @Override
+  protected AbstractFSContract createContract(Configuration conf) {
+    return new S3AContract(conf);
+  }
 
-  private static File testDirectory;
   private File methodDir;
   private File sourceDir;
+  private S3AFileSystem fileSystem;
+
+  @Rule
+  public TestName methodName = new TestName();
+
+  /**
+   * Set the timeout for every test.
+   */
+  @Rule
+  public Timeout testTimeout = new Timeout(600 * 1000);
 
   @BeforeClass
   public static void classSetup() throws Exception {
-    testDirectory = createTestDir();
+    Thread.currentThread().setName("JUnit");
+  }
+
+  public Configuration createConfiguration() {
+    return new Configuration();
+  }
+
+  @Override
+  public S3AFileSystem getFileSystem() {
+    return fileSystem;
   }
 
   @Before
   public void setup() throws Exception {
     super.setup();
+    String key = String.format(AbstractBondedFSContract.FSNAME_OPTION, "s3a");
+    Configuration conf = createConfiguration();
+    String fsVal = conf.getTrimmed(key);
+    assertFalse("No FS set in " + key, StringUtils.isEmpty(fsVal));
+    URI fsURI = new URI(fsVal);
+    assertEquals("Not an S3A Filesystem: " + fsURI,
+        "s3a", fsURI.getScheme());
+    fileSystem = (S3AFileSystem) FileSystem.get(fsURI, conf);
     root = new Path(getFileSystem().getUri());
-    testPath = new Path(root, "/ITestS3ACloudup");
-
-    methodDir = new File(testDirectory, methodName.getMethodName());
-    CloudupTestUtils.mkdirs(methodDir);
-    sourceDir = new File(methodDir, "src");
-    FileUtil.fullyDelete(sourceDir);
   }
 
-
-  @After
-  public void teardown() throws Exception {
-    if (methodDir != null) {
-      FileUtil.fullyDelete(methodDir);
-    }
-    cleanup("TEARDOWN", getFileSystem(), testPath);
-  }
-
-  @Test
-  public void testUpload() throws Throwable {
-    Path dest = methodPath();
-    int expected = createTestFiles(sourceDir, 256);
-    expectSuccess(
-        "-s", sourceDir.toURI().toString(),
-        "-d", dest.toUri().toString(),
-        "-t", "16",
-        "-o",
-        "-l", "3");
-
-  }
 
   public Path methodPath() {
     return new Path(testPath, methodName.getMethodName());
